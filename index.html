@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="HaisenKeji B52Nano USB 蓝牙音频发射器的 WebHID 控制台：配对/回连/断开、aptX 编码设置、状态查询，替代原厂 Windows 软件。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
+<title>B52Nano / HaisenKeji 蓝牙发射器控制台</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #171e2e; --panel2: #1d2740; --line: #2a3752;
+    --text: #e8edf7; --muted: #8fa0bd; --accent: #4da3ff;
+    --ok: #3fd68f; --warn: #ffb454; --err: #ff6b6b; --chip: #22304e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+    min-height: 100vh; padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+  .logo {
+    width: 46px; height: 46px; border-radius: 12px; flex: none;
+    background: linear-gradient(135deg, #4da3ff, #7b5cff);
+    display: flex; align-items: center; justify-content: center; font-size: 24px;
+  }
+  h1 { font-size: 20px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  .conn-area { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--err); box-shadow: 0 0 8px var(--err); }
+  .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 16px; font-size: 14px; cursor: pointer;
+    transition: all .15s; font-family: inherit;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: linear-gradient(135deg, #3070dd, #4da3ff); border: none; color: #fff; font-weight: 600; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.1); color: #fff; }
+  button.danger:hover:not(:disabled) { border-color: var(--err); color: var(--err); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .tag { font-size: 11px; color: var(--muted); font-weight: 400; }
+  .kv { display: grid; grid-template-columns: 92px 1fr; row-gap: 10px; font-size: 14px; align-items: baseline; }
+  .kv .k { color: var(--muted); }
+  .kv .v { font-weight: 500; word-break: break-all; }
+  .v .codec-pill {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    background: rgba(77,163,255,.15); color: var(--accent); font-size: 13px; font-weight: 600;
+  }
+  .btnrow { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btnrow button { flex: 1; min-width: 110px; }
+  label.chk {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+    cursor: pointer; font-size: 14px; user-select: none;
+  }
+  label.chk:hover { border-color: var(--accent); }
+  label.chk input { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; }
+  .chk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  @media (max-width: 560px) { .chk-grid { grid-template-columns: 1fr; } }
+  select {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 12px; font-size: 14px; font-family: inherit; width: 100%;
+  }
+  .note { font-size: 12px; color: var(--muted); line-height: 1.7; margin-top: 10px; }
+  .note b { color: var(--warn); }
+  #log {
+    background: #0b101b; border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; height: 220px; overflow-y: auto; font-size: 12px;
+    font-family: "JetBrains Mono", Consolas, monospace; line-height: 1.65;
+  }
+  #log .in { color: var(--ok); } #log .out { color: var(--accent); }
+  #log .sys { color: var(--muted); } #log .err { color: var(--err); }
+  #log .t { color: #5b6b8c; margin-right: 6px; }
+  details { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: var(--panel2); }
+  details summary { cursor: pointer; font-size: 13.5px; color: var(--muted); }
+  details .body { font-size: 12.5px; line-height: 1.9; margin-top: 8px; color: var(--muted); }
+  details .body code { color: var(--accent); background: #0b101b; padding: 1px 6px; border-radius: 5px; }
+  #diag { position: fixed; inset: auto 8px 8px 8px; background: #3a1111; color: #ffb3b3;
+          border: 1px solid #ff6b6b; border-radius: 10px; padding: 10px 14px; font-size: 12px;
+          font-family: monospace; white-space: pre-wrap; display: none; z-index: 99; max-height: 40vh; overflow: auto; }
+  #selftest { font-family: monospace; font-size: 12px; white-space: pre; line-height: 1.6; }
+  .banner {
+    display: none; background: rgba(255,180,84,.12); border: 1px solid var(--warn);
+    color: var(--warn); border-radius: 12px; padding: 12px 16px; font-size: 13px;
+    line-height: 1.7; margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🎧</div>
+    <div>
+      <h1>B52Nano 蓝牙发射器控制台</h1>
+      <div class="sub">HaisenKeji · Qualcomm QCC514X · WebHID v1.0.0 · 协议逆向自原厂「适配器助手 v1.3」</div>
+    </div>
+    <div class="conn-area">
+      <span class="dot" id="dot"></span>
+      <span id="connText" style="font-size:13px;color:var(--muted)">未连接</span>
+      <button class="primary" id="btnConnect">连接发射器</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>📡 适配器信息 <span class="tag">型号 / 版本 / 连接状态</span></h2>
+      <div class="kv">
+        <div class="k">型号</div><div class="v" id="infoModel">—</div>
+        <div class="k">固件版本</div><div class="v" id="infoVersion">—</div>
+        <div class="k">耳机</div><div class="v" id="infoHeadset">—</div>
+        <div class="k">编码格式</div><div class="v" id="infoCodec">—</div>
+      </div>
+      <div class="btnrow" style="margin-top:16px">
+        <button id="btnRefresh" disabled>刷新状态</button>
+      </div>
+      <div class="note">「耳机」一栏来自设备上报：连接/断开事件实时更新，无事件时显示最近连接的设备（灰色标注）。编码格式需编解码协商完成后再看。</div>
+    </div>
+
+    <div class="card">
+      <h2>🎛 蓝牙控制</h2>
+      <div class="btnrow">
+        <button id="btnPair" disabled>配对新设备</button>
+        <button id="btnReconn" disabled>回连耳机</button>
+        <button id="btnDisconn" class="danger" disabled>断开耳机</button>
+      </div>
+      <div class="btnrow" style="margin-top:10px">
+        <button id="btnLock" disabled>锁定当前设备</button>
+        <button id="btnUnlock" disabled>解除锁定</button>
+      </div>
+      <div class="note">
+        <b>配对</b>：发射器进入搜索模式，同时把蓝牙耳机/音箱调到配对模式。<br>
+        <b>回连</b>：向发射器记忆的上一台设备发起连接。<br>
+        <b>锁定</b>：锁定后发射器只回连锁定设备，不主动连其他已配对设备。
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>⚙️ 高级设置 <span class="tag">保存后发射器会自动重启（约几秒）</span></h2>
+    <div class="chk-grid">
+      <label class="chk"><input type="checkbox" id="ckAptxAd"> aptX Adaptive 开启</label>
+      <label class="chk"><input type="checkbox" id="ckAptx"> aptX 开启</label>
+      <label class="chk"><input type="checkbox" id="ckAptxHD"> aptX HD 开启</label>
+      <label class="chk"><input type="checkbox" id="ckAptxLL"> aptX LL 开启</label>
+      <label class="chk"><input type="checkbox" id="ckAutoPair"> 重启 20 秒后进入配对</label>
+      <label class="chk"><input type="checkbox" id="ckDetachUsb"> 自动切换蓝牙音频</label>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px">
+      <span style="font-size:14px;color:var(--muted);flex:none">aptX Adaptive 模式</span>
+      <select id="selQuality" disabled>
+        <option value="0">音质模式</option>
+        <option value="1">低延时模式</option>
+      </select>
+    </div>
+    <div class="btnrow">
+      <button id="btnSave" class="primary" disabled>保存设置</button>
+      <button id="btnPreset" disabled>推荐设置（全部编码开启）</button>
+    </div>
+    <div class="note">
+      编码开关只决定发射器「允许」哪些编码，实际用哪种取决于耳机支持情况（优先级一般是 Adaptive &gt; HD &gt; LL &gt; aptX &gt; SBC）。<br>
+      「自动切换蓝牙音频」= 未连接耳机时对电脑隐藏 USB 声卡（PS5/电脑上即插即见、连上耳机才出现）。<br>
+      「重启 20 秒后进入配对」= 回连不上旧设备时自动进入配对模式；不勾选则只回连、不搜新设备。<br>
+      <b>注意：编码位如果全关，就只能用 SBC 连接（音质下降）。原厂说明书要求升级后把 4 个编码都勾上。</b>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🔊 音频输出与测试 <span class="tag">把 Chrome 的声音送到发射器</span></h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <select id="sinkSelect" style="flex:1;min-width:220px"></select>
+      <button id="btnPlayTone">播放测试音</button>
+    </div>
+    <div class="note">在系统把输出设备切到「HaisenKeji USB Audio」后，也可在此直接为测试音选择输出。选择非默认设备时 Chrome 会请求一次权限。</div>
+  </div>
+
+  <div class="card">
+    <h2>🧾 协议日志 <span class="tag">HID 报文 · 耳机按键转发也在此显示</span>
+      <button id="btnClearLog" style="margin-left:auto;font-size:12px;padding:4px 12px">清空</button>
+    </h2>
+    <div id="log"></div>
+  </div>
+
+  <details>
+    <summary>📖 协议参考（逆向自原厂工具，供折腾用）</summary>
+    <div class="body">
+      HID 报告 ID <code>0x08</code>（厂商页 0xFFA0），64 字节帧：<code>[08] [命令] [参数…]</code>，其余补零。<br>
+      命令：<code>00 01</code> Ping · <code>01 01</code> 配对 · <code>02 +MAC6</code> 连接指定设备 · <code>03 01</code> 断开 · <code>04 00</code> 查询当前设备 · <code>0A 01</code> 查询最近设备 · <code>0D 00</code> 查询编码 · <code>0F 01/00</code> 锁定/解锁 · <code>11 05</code> 读版本 · <code>12 00</code> 读设置 · <code>12 01 +[自动配对][USB隐藏][输入源][编码位][Adaptive模式]</code> 保存。<br>
+      应答（payload 首字节为类型）：<code>FF</code> Ping 应答 · <code>03</code> 最近设备（MAC@[1..6]，已连接标志@[7]，名长@[8]，名@[9..]）· <code>04</code> 连接事件（名长@[7]，0=已断开）· <code>0D</code> 编码索引@[2]（0=空 1=SBC 2=FastStream 3=aptX 4=aptX LL 5=aptX HD 6=aptX Adaptive）· <code>11</code> 版本（校验 0x85@[1]，主@[2].次@[3]）· <code>12</code> 设置块@[1..5]。<br>
+      编码位：bit0=Adaptive · bit1=aptX · bit2=aptX HD · bit3=aptX LL。<br>
+      报告 ID <code>0x07</code> 为耳机多媒体按键转发（AVRCP → HID）。
+    </div>
+  </details>
+</div>
+
+<div id="diag"></div>
+
+<script>
+"use strict";
+/* ============ 常量与协议 ============ */
+const VID = 0x0a12, PID = 0x123b, RID = 8;
+const CODECS = ["", "SBC", "FastStream", "aptX", "aptX LL", "aptX HD", "aptX Adaptive"];
+const CMD = {
+  ping:      [0x00, 0x01],
+  pair:      [0x01, 0x01],
+  connect:   (mac) => [0x02, ...mac],
+  disconn:   [0x03, 0x01],
+  connected: [0x04, 0x00],
+  last:      [0x0a, 0x01],
+  codec:     [0x0d, 0x00],
+  lock:      [0x0f, 0x01],
+  unlock:    [0x0f, 0x00],
+  version:   [0x11, 0x05],
+  readSet:   [0x12, 0x00, 0x00, 0x00, 0x00, 0x00],
+  saveSet:   (autoPair, detach, inputSrc, codecBits, quality) =>
+               [0x12, 0x01, autoPair?1:0, detach?1:0, inputSrc, codecBits, quality],
+};
+const MEDIA_KEYS = {
+  0: [["bit0","播放/暂停"],["bit1","下一曲"],["bit2","上一曲"],["bit3","停止"]],
+  1: [["bit0","播放"],["bit1","暂停"],["bit2","快进"],["bit3","快退"]],
+  2: [["bit0","音量+"],["bit1","音量−"],["bit2","静音"]],
+};
+
+/* ============ 小工具 ============ */
+const $ = (id) => document.getElementById(id);
+const hex = (arr) => Array.from(arr, b => b.toString(16).padStart(2,"0")).join(" ");
+const macStr = (m) => Array.from(m, b => b.toString(16).padStart(2,"0")).join(":");
+window.onerror = (msg, src, line) => {
+  const d = $("diag"); d.style.display = "block";
+  d.textContent += `ERROR ${msg} @${line}\n`;
+};
+function log(cls, text) {
+  const el = $("log");
+  const line = document.createElement("div");
+  const t = document.createElement("span");
+  t.className = "t"; t.textContent = new Date().toTimeString().slice(0,8);
+  const body = document.createElement("span");
+  body.className = cls; body.textContent = text; // textContent：防注入，蓝牙设备名不可信
+  line.appendChild(t); line.appendChild(body);
+  el.appendChild(line);
+  while (el.childNodes.length > 400) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+const esc = (s) => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ============ 设备状态 ============ */
+let dev = null;
+let lastMac = null;
+let pollTimer = null;
+let headsetLive = false; // 是否收到过「已连接」事件（04 报文）
+
+function setConnected(on) {
+  $("dot").classList.toggle("on", on);
+  $("connText").textContent = on ? `已连接 (${dev.productName||"HaisenKeji"})` : "未连接";
+  for (const id of ["btnRefresh","btnPair","btnReconn","btnDisconn","btnLock","btnUnlock",
+                    "btnSave","btnPreset"]) $(id).disabled = !on;
+  for (const id of ["ckAptxAd","ckAptx","ckAptxHD","ckAptxLL","ckAutoPair","ckDetachUsb","selQuality"])
+    $(id).disabled = !on;
+}
+
+async function sendCmd(bytes, label) {
+  if (!dev) return;
+  const data = new Uint8Array(63);
+  data.set(bytes.slice(0, 63));
+  try {
+    await dev.sendReport(RID, data);
+    log("out", `→ ${label||""} [${hex(bytes)}]`);
+  } catch (e) {
+    log("err", `→ ${label||""} 发送失败: ${esc(e.message||e)}`);
+  }
+}
+
+/* ============ 应答解析 ============ */
+function handlePayload(p) {
+  const t = p[0];
+  if (t === 0xff) { log("sys", "Ping 应答"); return; }
+  if (t === 0x03) { // 最近/当前连接设备
+    const mac = p.slice(1, 7);
+    lastMac = mac;
+    headsetLive = p[7] === 1; // 「当前已连接」标志位
+    const nameLen = p[8] || 0;
+    const name = nameLen ? new TextDecoder().decode(p.slice(9, 9 + nameLen)) : "";
+    $("infoHeadset").innerHTML = name
+      ? `${esc(name)} <span style="color:var(--muted);font-size:12px">(${macStr(mac)}${headsetLive ? " · 已连接" : " · 最近"})</span>`
+      : "无记录";
+    log("sys", `最近设备: ${name} (${macStr(mac)})${headsetLive ? " [已连接]" : ""}`);
+    return;
+  }
+  if (t === 0x04) { // 连接状态事件
+    const nameLen = p[7] || 0;
+    if (!nameLen) {
+      headsetLive = false;
+      $("infoHeadset").textContent = "未连接";
+      $("infoCodec").textContent = "—";
+      log("sys", "事件: 耳机已断开");
+    } else {
+      headsetLive = true;
+      const name = new TextDecoder().decode(p.slice(8, 8 + nameLen));
+      $("infoHeadset").textContent = name;
+      log("sys", `事件: 已连接 ${name}`);
+    }
+    return;
+  }
+  if (t === 0x0d) { // 当前编码
+    const idx = p[2]|0;
+    const name = (idx < CODECS.length && CODECS[idx]) ? CODECS[idx] : `未知(${idx})`;
+    $("infoCodec").innerHTML = `<span class="codec-pill">${name}</span>`;
+    log("sys", `编码: ${name} (索引 ${idx})`);
+    return;
+  }
+  if (t === 0x11) { // 版本
+    if (p[1] === 0x85) {
+      $("infoVersion").textContent = `v${p[2]}.${p[3]}`;
+      log("sys", `固件版本 v${p[2]}.${p[3]}`);
+    }
+    return;
+  }
+  if (t === 0x12) { // 设置块
+    const autoPair = p[1] > 0, detach = p[2] > 0, inputSrc = p[3], bits = p[4], quality = p[5]|0;
+    $("ckAutoPair").checked = autoPair;
+    $("ckDetachUsb").checked = detach;
+    $("ckAptxAd").checked = !!(bits & 1);
+    $("ckAptx").checked  = !!(bits & 2);
+    $("ckAptxHD").checked = !!(bits & 4);
+    $("ckAptxLL").checked = !!(bits & 8);
+    $("selQuality").value = String(Math.min(quality, 1));
+    log("sys", `设置: 自动配对=${autoPair?1:0} USB隐藏=${detach?1:0} 编码位=0x${bits.toString(16)} Adaptive模式=${quality}`);
+    return;
+  }
+}
+
+/* ============ 连接 ============ */
+async function connect() {
+  if (!("hid" in navigator)) {
+    $("banner").style.display = "block";
+    $("banner").innerHTML = "当前浏览器不支持 WebHID。请使用桌面版 Chrome / Edge / Opera（Firefox 不支持）。<br>Linux 下还需为 hidraw 添加 udev 规则（见页面底部 README 或工具目录内说明）。";
+    return;
+  }
+  try {
+    let devices = await navigator.hid.getDevices();
+    let d = devices.find(x => x.vendorId === VID && x.productId === PID);
+    if (!d) {
+      devices = await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: PID }] });
+      d = devices[0];
+    }
+    if (!d) return;
+    if (!d.opened) await d.open();
+    dev = d;
+    dev.addEventListener("inputreport", onReport);
+    dev.addEventListener("disconnect", onDisconnect);
+    setConnected(true);
+    $("infoModel").textContent = "HaiSenKeji B52Nano (QCC514X)";
+    log("sys", "设备已连接: " + (d.productName || "HaisenKeji"));
+    await refreshAll();
+    clearInterval(pollTimer); // 防止重复连接时叠加多个轮询
+    pollTimer = setInterval(async () => {
+      if (dev && dev.opened) {
+        await sendCmd(CMD.last, "查询最近设备");
+        await sendCmd(CMD.codec, "查询编码");
+      }
+    }, 5000);
+  } catch (e) {
+    log("err", "连接失败: " + esc(e.message || e));
+  }
+}
+
+function onDisconnect(e) {
+  if (e.device === dev) {
+    log("err", "设备已拔出");
+    dev = null;
+    clearInterval(pollTimer);
+    setConnected(false);
+  }
+}
+
+function onReport(e) {
+  const rid = e.reportId;
+  const p = new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength);
+  if (rid === RID) {
+    log("in", `← [${hex(p)}]`);
+    handlePayload(p);
+  } else if (rid === 7) {
+    const keys = [];
+    for (const [bi, defs] of Object.entries(MEDIA_KEYS)) {
+      const byte = p[bi] || 0;
+      for (const [maskStr, label] of defs) {
+        const mask = 1 << parseInt(maskStr.slice(3), 10);
+        if (byte & mask) keys.push(label);
+      }
+    }
+    log("sys", `耳机按键: ${keys.length ? keys.join(" + ") : hex(p)}`);
+  }
+}
+
+async function refreshAll() {
+  $("infoModel").textContent = "HaiSenKeji B52Nano (QCC514X)";
+  await sendCmd(CMD.ping, "Ping");
+  await sendCmd(CMD.version, "读版本");
+  await sendCmd(CMD.readSet, "读设置");
+  await sendCmd(CMD.last, "查询最近设备");
+  await sendCmd(CMD.codec, "查询编码");
+}
+
+/* ============ 控制按钮 ============ */
+$("btnConnect").onclick = connect;
+$("btnRefresh").onclick = refreshAll;
+$("btnPair").onclick = async () => {
+  await sendCmd(CMD.pair, "配对模式");
+  setTimeout(() => sendCmd(CMD.last, "查询最近设备"), 30000);
+};
+$("btnReconn").onclick = async () => {
+  await sendCmd(CMD.last, "回连:先查询最近设备");
+  setTimeout(async () => {
+    if (lastMac) {
+      await sendCmd(CMD.connect(lastMac), `回连 ${macStr(lastMac)}`);
+    } else {
+      log("err", "没有最近设备记录，请先配对");
+    }
+  }, 400);
+};
+$("btnDisconn").onclick = () => sendCmd(CMD.disconn, "断开耳机");
+$("btnLock").onclick = () => sendCmd(CMD.lock, "锁定设备");
+$("btnUnlock").onclick = () => sendCmd(CMD.unlock, "解除锁定");
+$("btnClearLog").onclick = () => { $("log").innerHTML = ""; };
+
+function collectSave() {
+  const bits = ($("ckAptxAd").checked ? 1 : 0) | ($("ckAptx").checked ? 2 : 0)
+             | ($("ckAptxHD").checked ? 4 : 0) | ($("ckAptxLL").checked ? 8 : 0);
+  return CMD.saveSet($("ckAutoPair").checked, $("ckDetachUsb").checked, 0, bits,
+                     parseInt($("selQuality").value, 10) || 0);
+}
+$("btnSave").onclick = async () => {
+  await sendCmd(collectSave(), "保存设置");
+  log("sys", "已保存，发射器正在重启…");
+  setTimeout(async () => {
+    if (dev && dev.opened) {
+      await sendCmd(CMD.readSet, "重启后回读设置");
+      await sendCmd(CMD.last, "重启后查询设备");
+    }
+  }, 5000);
+};
+$("btnPreset").onclick = async () => {
+  $("ckAptxAd").checked = true; $("ckAptx").checked = true;
+  $("ckAptxHD").checked = true; $("ckAptxLL").checked = true;
+  await sendCmd(collectSave(), "推荐设置保存");
+  log("sys", "已保存（全部编码开启），发射器正在重启…");
+  setTimeout(async () => {
+    if (dev && dev.opened) await sendCmd(CMD.readSet, "重启后回读设置");
+  }, 5000);
+};
+
+/* ============ 音频输出与测试音 ============ */
+async function refreshSinks() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  const list = await navigator.mediaDevices.enumerateDevices();
+  const sel = $("sinkSelect");
+  sel.innerHTML = "";
+  for (const d of list.filter(x => x.kind === "audiooutput")) {
+    const opt = document.createElement("option");
+    opt.value = d.deviceId;
+    opt.textContent = d.label || (d.deviceId === "default" ? "默认输出" : "输出设备（名称需授权后显示）");
+    sel.appendChild(opt);
+  }
+}
+$("btnPlayTone").onclick = async () => {
+  try {
+    const sel = $("sinkSelect");
+    if (sel.value && sel.value !== "default") {
+      const perm = await navigator.permissions.query({ name: "speaker-selection" }).catch(() => null);
+      if (!perm || perm.state !== "granted") {
+        await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {});
+      }
+    }
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (sel.value && ctx.sinkId !== undefined) {
+      try { await ctx.setSinkId(sel.value); } catch (e) { log("err", "切换输出失败: " + esc(e.message)); }
+    }
+    const o = ctx.createOscillator(), g = ctx.createGain(), pan = ctx.createStereoPanner();
+    o.type = "sine"; o.connect(g); g.connect(pan); pan.connect(ctx.destination);
+    g.gain.setValueAtTime(0.0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+    o.start();
+    for (let t = 0; t < 8; t++) { // 左右交替 8 声
+      await new Promise(r => setTimeout(r, 500));
+      o.frequency.value = (t % 2 === 0) ? 880 : 440;
+      pan.pan.value = (t % 2 === 0) ? -1 : 1;
+    }
+    g.gain.linearRampToValueAtTime(0.0, ctx.currentTime + 0.1);
+    o.stop(ctx.currentTime + 0.15);
+    setTimeout(() => ctx.close(), 400);
+    log("sys", "测试音已播放");
+  } catch (e) {
+    log("err", "播放失败: " + esc(e.message || e));
+  }
+};
+refreshSinks();
+navigator.mediaDevices?.addEventListener?.("devicechange", refreshSinks);
+
+/* ============ 自测（?selftest 无头验证） ============ */
+if (location.search.includes("selftest")) {
+  const out = [];
+  const eq = (a, b, name) => out.push(`${JSON.stringify(a)===JSON.stringify(b)?"PASS":"FAIL"} ${name} → ${JSON.stringify(a)}`);
+  eq(CMD.pair, [1,1], "pair frame");
+  eq(CMD.connect([0xb8,0x20,0x8e,0x8d,0x5e,0x0a]), [2,0xb8,0x20,0x8e,0x8d,0x5e,0x0a], "connect frame");
+  eq(CMD.saveSet(true,false,0,0x0f,1), [0x12,1,1,0,0,0x0f,1], "save frame");
+  // 模拟 03 应答
+  const p3 = new Uint8Array(63); p3.set([3,0xb8,0x20,0x8e,0x8d,0x5e,0x0a,0,17,...Array.from("Technics EAH-AZ80", c=>c.charCodeAt(0))]);
+  handlePayload(p3);
+  out.push(`${$("infoHeadset").textContent.includes("Technics")?"PASS":"FAIL"} parse 03 name → ${$("infoHeadset").textContent}`);
+  // 模拟 11 应答
+  const p11 = new Uint8Array(63); p11.set([0x11,0x85,1,0]);
+  handlePayload(p11);
+  out.push(`${$("infoVersion").textContent==="v1.0"?"PASS":"FAIL"} parse 11 version → ${$("infoVersion").textContent}`);
+  // 模拟 12 应答
+  const p12 = new Uint8Array(63); p12.set([0x12,1,0,0,0x0f,1]);
+  handlePayload(p12);
+  out.push(`${$("ckAptxAd").checked&&$("ckAptxLL").checked&&$("selQuality").value==="1"?"PASS":"FAIL"} parse 12 settings`);
+  // 模拟 0D 应答
+  const p0d = new Uint8Array(63); p0d.set([0x0d,0,6]);
+  handlePayload(p0d);
+  out.push(`${$("infoCodec").textContent.includes("aptX Adaptive")?"PASS":"FAIL"} parse 0d codec → ${$("infoCodec").textContent}`);
+  // 模拟 04 断开
+  const p04 = new Uint8Array(63); p04.set([4,0,0,0,0,0,0,0]);
+  handlePayload(p04);
+  out.push(`${$("infoHeadset").textContent==="未连接"?"PASS":"FAIL"} parse 04 disconnect`);
+  const el = document.createElement("div"); el.id = "selftest"; el.className = "card";
+  el.textContent = out.join("\n");
+  document.querySelector(".wrap").prepend(el);
+  console.log(out.join("\n"));
+}
+</script>
+</body>
+</html>
